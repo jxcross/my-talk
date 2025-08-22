@@ -720,6 +720,7 @@ def main():
         """
         <div style='text-align: center; color: #666; font-size: 0.8rem;'>
         MyTalk v1.0 | Personal English Learning Assistant<br>
+        Copyright © 2025 Sunggeun Han (mysomang@gmail.com)<br>
         Made with ❤️ using Streamlit
         </div>
         """,
