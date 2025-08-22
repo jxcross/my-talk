@@ -90,8 +90,7 @@ def init_session_state():
         'current_script': None,
         'audio_file': None,
         'scripts_history': [],
-        'tts_engine': 'auto',  # 변경
-        'tts_voice': 'en'      # 변경
+        'tts_voice': 'en-US-AriaNeural'
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -226,15 +225,15 @@ class LLMProvider:
         return self.generate_script(prompt)
 
 # TTS Functions
-# async def generate_tts(text, voice='en-US-AriaNeural', output_path='output.mp3'):
-#     """Generate TTS using edge-tts"""
-#     try:
-#         communicate = edge_tts.Communicate(text, voice)
-#         await communicate.save(output_path)
-#         return output_path
-#     except Exception as e:
-#         st.error(f"TTS 생성 오류: {str(e)}")
-#         return None
+async def generate_tts(text, voice='en-US-AriaNeural', output_path='output.mp3'):
+    """Generate TTS using edge-tts"""
+    try:
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(output_path)
+        return output_path
+    except Exception as e:
+        st.error(f"TTS 생성 오류: {str(e)}")
+        return None
 
 def get_audio_player(audio_path):
     """Create audio player HTML"""
@@ -327,73 +326,28 @@ def settings_page():
         st.session_state.api_key = api_key
     
     with st.expander("🔊 TTS 설정"):
-        # TTS 매니저 초기화
-        tts_manager = TTSManager()
+        voices = [
+            'en-US-AriaNeural',
+            'en-US-JennyNeural', 
+            'en-US-GuyNeural',
+            'en-GB-SoniaNeural',
+            'en-GB-RyanNeural',
+            'en-AU-NatashaNeural',
+            'en-AU-WilliamNeural'
+        ]
         
-        if not tts_manager.available_engines:
-            st.error("❌ TTS 엔진이 설치되지 않았습니다.")
-            st.code("pip install gtts pyttsx3", language="bash")
-            st.info("gtts를 설치하면 고품질 음성을 사용할 수 있습니다.")
-        else:
-            st.success(f"✅ 사용 가능: {', '.join(tts_manager.available_engines)}")
-            
-            # 엔진 선택
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                engine_options = ['auto (자동)'] + tts_manager.available_engines
-                selected_engine = st.selectbox(
-                    "TTS 엔진",
-                    engine_options,
-                    help="auto를 선택하면 가장 안정적인 엔진을 자동으로 선택합니다"
-                )
-                
-                if selected_engine == 'auto (자동)':
-                    st.session_state.tts_engine = 'auto'
-                else:
-                    st.session_state.tts_engine = selected_engine
-            
-            with col2:
-                # 음성 선택
-                if st.session_state.tts_engine in ['auto', 'gTTS']:
-                    voice_options = {
-                        '영어 (미국)': 'en',
-                        '영어 (영국)': 'en-uk', 
-                        '영어 (호주)': 'en-au',
-                        '한국어': 'ko'
-                    }
-                    selected_voice_name = st.selectbox("음성 언어", list(voice_options.keys()))
-                    st.session_state.tts_voice = voice_options[selected_voice_name]
-                    
-                elif st.session_state.tts_engine == 'edge-tts':
-                    voice_options = {
-                        '영어 여성': 'en-US-AriaNeural',
-                        '영어 남성': 'en-US-GuyNeural',
-                        '한국어 여성': 'ko-KR-SunHiNeural'
-                    }
-                    selected_voice_name = st.selectbox("음성 선택", list(voice_options.keys()))
-                    st.session_state.tts_voice = voice_options[selected_voice_name]
-                else:
-                    st.info("시스템 기본 음성을 사용합니다")
-                    st.session_state.tts_voice = None
-            
-            # 테스트 버튼
-            if st.button("🔊 음성 테스트"):
-                test_text = "Hello! This is a test of the text to speech system."
-                with st.spinner("테스트 중..."):
-                    audio_path = generate_audio_with_fallback(
-                        test_text, 
-                        st.session_state.tts_engine,
-                        st.session_state.tts_voice
-                    )
-                    if audio_path:
-                        st.audio(audio_path)
-                        st.success("✅ TTS가 정상 작동합니다!")
-                    else:
-                        st.error("❌ TTS 생성 실패")
-                        st.info("브라우저 내장 TTS를 사용해보세요:")
-                        st.markdown(get_browser_tts_script(test_text), unsafe_allow_html=True)
-
+        st.session_state.tts_voice = st.selectbox(
+            "음성 선택",
+            voices,
+            index=voices.index(st.session_state.tts_voice)
+        )
+        
+        # Voice preview
+        if st.button("🔊 음성 미리듣기"):
+            preview_text = "Hello! This is a preview of the selected voice. How does it sound?"
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp:
+                asyncio.run(generate_tts(preview_text, st.session_state.tts_voice, tmp.name))
+                st.audio(tmp.name)
     
     with st.expander("☁️ Google Drive 설정"):
         st.info("Google Drive API 설정이 필요합니다. (선택사항)")
@@ -504,21 +458,13 @@ def create_script_page():
                 with col1:
                     if st.button("🔊 음성 생성"):
                         with st.spinner("음성 생성 중..."):
-                            audio_path = generate_audio_with_fallback(
-                                result,
-                                st.session_state.tts_engine,
-                                st.session_state.tts_voice
-                            )
-                            if audio_path:
-                                st.session_state.audio_file = audio_path
-                                st.audio(audio_path)
-                                st.success("✅ 음성 생성 완료!")
-                            else:
-                                st.error("❌ 음성 생성 실패")
-                                # 브라우저 TTS 폴백 제공
-                                if st.checkbox("브라우저 TTS 사용"):
-                                    st.markdown(get_browser_tts_script(result), unsafe_allow_html=True)
-
+                            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp:
+                                audio_path = asyncio.run(
+                                    generate_tts(result, st.session_state.tts_voice, tmp.name)
+                                )
+                                if audio_path:
+                                    st.session_state.audio_file = audio_path
+                                    st.audio(audio_path)
                 
                 with col2:
                     if st.button("💾 저장"):
@@ -595,17 +541,12 @@ def practice_page():
                     # Audio controls
                     if st.button("🔊 음성 재생"):
                         with st.spinner("음성 생성 중..."):
-                            audio_path = generate_audio_with_fallback(
-                                result,
-                                st.session_state.tts_engine,
-                                st.session_state.tts_voice
-                            )
-                            if audio_path:
-                                st.audio(audio_path, format='audio/mp3')
-                            else:
-                                st.error("음성 생성 실패")
-                                st.markdown(get_browser_tts_script(result), unsafe_allow_html=True)
-
+                            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp:
+                                audio_path = asyncio.run(
+                                    generate_tts(result, st.session_state.tts_voice, tmp.name)
+                                )
+                                if audio_path:
+                                    st.audio(audio_path, format='audio/mp3')
                 
                 with col2:
                     st.markdown("### 🇰🇷 한국어 번역")
@@ -667,17 +608,12 @@ def library_page():
                     else:
                         if st.button(f"🔊 음성 생성", key=f"tts_{script_id}"):
                             with st.spinner("음성 생성 중..."):
-                                audio_path = generate_audio_with_fallback(
-                                    content,
-                                    st.session_state.tts_engine,
-                                    st.session_state.tts_voice
-                                )
-                                if audio_path:
-                                    st.audio(audio_path)
-                                    # DB에 경로 저장 (선택사항)
-                                    # db.update_audio_path(script_id, audio_path)
-                                else:
-                                    st.error("음성 생성 실패")
+                                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp:
+                                    audio_path = asyncio.run(
+                                        generate_tts(content, st.session_state.tts_voice, tmp.name)
+                                    )
+                                    if audio_path:
+                                        st.audio(audio_path)
                 
                 with tab2:
                     if translation:

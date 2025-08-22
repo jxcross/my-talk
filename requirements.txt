@@ -1,10 +1,36 @@
+# Core
 streamlit==1.31.0
+
+# LLM Providers
 openai==0.28.1
 anthropic==0.18.1
 google-generativeai==0.3.2
-edge-tts==6.1.9
+
+# TTS Options (여러 옵션 제공)
+gtts==2.5.0  # Google TTS - 가장 안정적
+pyttsx3==2.90  # 오프라인 TTS
+edge-tts==6.1.9  # Edge TTS - 선택사항
+
+# Image & File Processing
 Pillow==10.2.0
+
+# Google Drive (optional)
 google-auth==2.27.0
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
 google-api-python-client==2.116.0
+
+
+#---------------------------
+# streamlit==1.31.0
+# openai==0.28.1
+# anthropic==0.18.1
+# google-generativeai==0.3.2
+# edge-tts==6.1.9
+# Pillow==10.2.0
+# google-auth==2.27.0
+# google-auth-oauthlib==1.2.0
+# google-auth-httplib2==0.2.0
+# google-api-python-client==2.116.0
+# gtts==2.5.4
+# pyttsx3==2.99
