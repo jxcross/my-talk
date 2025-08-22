@@ -1,0 +1,43 @@
+[theme]
+# 다크/라이트 모드 자동 전환
+base = "light"
+
+# 색상 테마
+primaryColor = "#4CAF50"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+
+# 폰트
+font = "sans serif"
+
+[server]
+# 모바일 접속 허용
+headless = true
+address = "0.0.0.0"
+port = 8501
+
+# 파일 업로드 크기 제한 (MB)
+maxUploadSize = 10
+
+# 세션 설정
+[server.session]
+# 세션 타임아웃 (분)
+inactivityTimeout = 60
+
+[browser]
+# 탭 제목
+gatherUsageStats = false
+
+[client]
+# 성능 최적화
+showErrorDetails = true
+toolbarMode = "minimal"
+
+# 모바일 최적화
+[runner]
+fastReruns = true
+
+# 메모리 관리
+[deprecation]
+showPyplotGlobalUse = false
