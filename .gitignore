@@ -1,3 +1,17 @@
 .DS_Store
 .env
 .key
+__pycache__/
+mytalk_data/
+temp_backups/
+.secrets/
+token.pickle
+**/token.pickle
+**/*service_account*.json
+**/*credential*.json
+# === secrets guard ===
+**/token.pickle
+**/*service_account*.json
+**/google_drive_service_account.json
+**/google_drive_credentials.json
+**/credentials.json
