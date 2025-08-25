@@ -1,0 +1,39 @@
+# MyTalk Android App Requirements - 업데이트됨 (2025)
+
+# Core framework
+kivy==2.2.1
+kivymd>=1.2.0
+
+# OpenAI API
+openai>=1.10.0
+
+# HTTP requests (latest stable versions)
+requests>=2.31.0
+urllib3>=2.0.0
+certifi>=2023.7.22
+charset-normalizer>=3.2.0
+idna>=3.4
+
+# Build dependencies (for buildozer)
+Cython>=0.29.33,<1.0
+wheel>=0.41.0
+setuptools>=68.0.0
+
+# Audio processing (optional)
+# pydub>=0.25.1
+
+# Python standard library modules (included by default)
+# json
+# pathlib
+# os
+# shutil
+# tempfile
+# datetime
+# re
+# threading
+# concurrent.futures
+
+# Android specific (handled by buildozer/p4a)
+# android.permissions
+# android.storage
+# jnius (for Android Java bridge)
