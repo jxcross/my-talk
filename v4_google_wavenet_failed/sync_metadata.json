@@ -1,0 +1,59 @@
+{
+  "20250823_162300": {
+    "drive_folder_id": "15_xt9v03wa6KoDt8xY-1JDlkdfFHadyk",
+    "uploaded_files": [
+      [
+        "metadata.json",
+        "1PVNgrpCkRMkzxJNWvCVAUnLpGCcUn1qn"
+      ],
+      [
+        "original_script.txt",
+        "11XRGqqmo1BJDRnX3L2Tfwm9VdqnUr9xH"
+      ],
+      [
+        "podcast_script.txt",
+        "1DycyDhYhEQeNx5o0yFhynFndMm3ljz-8"
+      ],
+      [
+        "daily_script.txt",
+        "100jt6mLrqE2V1pD3ZTB0LWkR9HWKzb3G"
+      ],
+      [
+        "ted_script.txt",
+        "1kZtmBsKp3QrJGCLAH6XZ9VL41l1nX04d"
+      ],
+      [
+        "korean_translation.txt",
+        "1RwU__LL1hbEvFmSZ26OqCB3aae5WQY60"
+      ],
+      [
+        "audio/original_audio.mp3",
+        "1RCVytsQKpXGKy6AQAsGt7of8Hkw3eNsL"
+      ],
+      [
+        "audio/ted_audio.mp3",
+        "1xEiF-C4qljGLAvm6Jzi0hlFJzeFv-a2r"
+      ],
+      [
+        "audio/daily_audio.mp3",
+        "1QiZURpDG69gRnx42aEBMAE-qEYLWjMgf"
+      ],
+      [
+        "audio/podcast_audio.mp3",
+        "1TTIT3ak6_cSg0_GcIW8dGVBxZMCHFZeS"
+      ]
+    ],
+    "last_sync": "2025-08-23T16:26:43.353344",
+    "local_hash": {
+      "original_script.txt": "b57b226a441266ba213712a69e505935",
+      "korean_translation.txt": "83328ecbfac7015626dde213d2bcfcbb",
+      "ted_script.txt": "367642c39cc02ca3f351a8626fdcca04",
+      "audio/ted_audio.mp3": "8eeb8cc2dcf7ed0bd41a70a0714ef919",
+      "podcast_script.txt": "51eb9964461d266c58c79dd6d78338c4",
+      "audio/podcast_audio.mp3": "5b617b52f83046c1e1d2909b04d2ca15",
+      "daily_script.txt": "b76f1b7fe6ca08eec6f60fdeaf08ac1e",
+      "audio/daily_audio.mp3": "46dcb71b7add7fb28043b2a290883dbc",
+      "audio/original_audio.mp3": "49691ac4c474afb01af2519b1aee9e05"
+    }
+  }
+}
