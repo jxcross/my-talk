@@ -6,6 +6,7 @@ MyTalk - 탭별 개별 생성 버전
 3. 각 탭마다 개별 (스크립트 작성), (음성 작성) 버튼
 4. 자동 생성 대신 사용자 선택 기반 생성
 5. imageio_ffmpeg를 사용한 오디오 합치기 (Streamlit Cloud 호환)
+6. 프로젝트 다운로드/업로드 기능 추가
 """
 
 import streamlit as st
@@ -21,6 +22,8 @@ from datetime import datetime
 import re
 import subprocess
 import base64
+import zipfile
+import io
 
 # OpenAI Library
 try:
@@ -440,6 +443,185 @@ class SimpleStorage:
         except Exception as e:
             st.error(f"프로젝트 삭제 실패: {str(e)}")
             return False
+    
+    def export_project_to_zip(self, project_id):
+        """프로젝트를 ZIP 파일로 내보내기"""
+        try:
+            project_content = self.load_project_content(project_id)
+            if not project_content:
+                st.error(f"프로젝트 {project_id}를 찾을 수 없습니다.")
+                return None
+            
+            metadata = project_content['metadata']
+            
+            # 메모리에서 ZIP 파일 생성
+            zip_buffer = io.BytesIO()
+            
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # metadata.json 추가
+                zip_file.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+                
+                # 저장된 파일들을 ZIP에 추가
+                for file_type, file_info in metadata.get('saved_files', {}).items():
+                    if isinstance(file_info, str) and os.path.exists(file_info):
+                        # 단일 파일인 경우
+                        filename = os.path.basename(file_info)
+                        zip_file.write(file_info, filename)
+                        st.write(f"✅ {filename} 추가됨")
+                    
+                    elif isinstance(file_info, dict):
+                        # 다중 파일인 경우 (오디오 구조)
+                        for sub_key, sub_info in file_info.items():
+                            if isinstance(sub_info, str) and os.path.exists(sub_info):
+                                filename = f"{sub_key}_{os.path.basename(sub_info)}"
+                                zip_file.write(sub_info, filename)
+                                st.write(f"✅ {filename} 추가됨")
+                            
+                            elif isinstance(sub_info, list):
+                                # 문장별 오디오 파일들
+                                for i, sentence_info in enumerate(sub_info):
+                                    if isinstance(sentence_info, dict) and 'audio_file' in sentence_info:
+                                        audio_file = sentence_info['audio_file']
+                                        if isinstance(audio_file, str) and os.path.exists(audio_file):
+                                            filename = f"{sub_key}_{i+1:02d}_{os.path.basename(audio_file)}"
+                                            zip_file.write(audio_file, filename)
+                                            st.write(f"✅ {filename} 추가됨")
+            
+            zip_buffer.seek(0)
+            return zip_buffer.getvalue()
+            
+        except Exception as e:
+            st.error(f"ZIP 내보내기 실패: {str(e)}")
+            import traceback
+            st.error(f"상세 오류:\n{traceback.format_exc()}")
+            return None
+    
+    def import_project_from_zip(self, zip_data):
+        """ZIP 파일에서 프로젝트 가져오기"""
+        try:
+            # 임시 디렉토리 생성
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                
+                # ZIP 파일 압축 해제
+                with zipfile.ZipFile(io.BytesIO(zip_data), 'r') as zip_file:
+                    zip_file.extractall(temp_path)
+                
+                # metadata.json 읽기
+                metadata_file = temp_path / "metadata.json"
+                if not metadata_file.exists():
+                    st.error("ZIP 파일에 metadata.json이 없습니다.")
+                    return None
+                
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                
+                # 새로운 프로젝트 ID 생성 (중복 방지)
+                original_project_id = metadata['project_id']
+                new_project_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_imported"
+                
+                # 프로젝트 폴더 생성
+                title = metadata.get('title', f'Imported_Script_{new_project_id}')
+                safe_title = self.sanitize_filename(title)
+                project_folder = self.scripts_dir / f"{new_project_id}_{safe_title}"
+                project_folder.mkdir(exist_ok=True)
+                
+                audio_folder = project_folder / "audio"
+                audio_folder.mkdir(exist_ok=True)
+                
+                st.write(f"📂 새 프로젝트 폴더 생성: {project_folder.name}")
+                
+                # 파일들 복사 및 경로 업데이트
+                new_saved_files = {}
+                
+                for file_type, file_info in metadata.get('saved_files', {}).items():
+                    if isinstance(file_info, str):
+                        # 단일 파일 처리
+                        original_filename = os.path.basename(file_info)
+                        temp_file = temp_path / original_filename
+                        
+                        if temp_file.exists():
+                            if 'audio' in file_type:
+                                new_file = audio_folder / original_filename
+                            else:
+                                new_file = project_folder / original_filename
+                            
+                            shutil.copy2(temp_file, new_file)
+                            new_saved_files[file_type] = str(new_file)
+                            st.write(f"✅ {original_filename} 복사됨")
+                    
+                    elif isinstance(file_info, dict):
+                        # 다중 파일 구조 처리
+                        new_file_dict = {}
+                        
+                        for sub_key, sub_info in file_info.items():
+                            if isinstance(sub_info, str):
+                                # 개별 역할 오디오 파일
+                                original_filename = f"{sub_key}_{os.path.basename(sub_info)}"
+                                temp_file = temp_path / original_filename
+                                
+                                if temp_file.exists():
+                                    new_file = audio_folder / os.path.basename(sub_info)
+                                    shutil.copy2(temp_file, new_file)
+                                    new_file_dict[sub_key] = str(new_file)
+                                    st.write(f"✅ {original_filename} 복사됨")
+                            
+                            elif isinstance(sub_info, list):
+                                # 문장별 오디오 파일들
+                                new_sentences = []
+                                sentences_folder = audio_folder / f"{file_type.replace('_audio', '')}_sentences"
+                                sentences_folder.mkdir(exist_ok=True)
+                                
+                                for i, sentence_info in enumerate(sub_info):
+                                    if isinstance(sentence_info, dict):
+                                        original_filename = f"{sub_key}_{i+1:02d}_{os.path.basename(sentence_info.get('audio_file', ''))}"
+                                        temp_file = temp_path / original_filename
+                                        
+                                        if temp_file.exists():
+                                            new_audio_file = sentences_folder / os.path.basename(sentence_info.get('audio_file', ''))
+                                            shutil.copy2(temp_file, new_audio_file)
+                                            
+                                            new_sentence_info = sentence_info.copy()
+                                            new_sentence_info['audio_file'] = str(new_audio_file)
+                                            new_sentences.append(new_sentence_info)
+                                            st.write(f"✅ {original_filename} 복사됨")
+                                
+                                if new_sentences:
+                                    new_file_dict[sub_key] = new_sentences
+                        
+                        if new_file_dict:
+                            new_saved_files[file_type] = new_file_dict
+                
+                # 메타데이터 업데이트
+                metadata['project_id'] = new_project_id
+                metadata['saved_files'] = new_saved_files
+                metadata['imported_at'] = datetime.now().isoformat()
+                metadata['original_project_id'] = original_project_id
+                
+                # 새 메타데이터 파일 저장
+                new_metadata_file = project_folder / "metadata.json"
+                with open(new_metadata_file, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+                
+                # 프로젝트 인덱스에 추가
+                self.update_project_index(
+                    new_project_id, 
+                    metadata['title'], 
+                    metadata['category'], 
+                    str(project_folder), 
+                    update_existing=False
+                )
+                
+                st.success(f"🎉 프로젝트 가져오기 완료!")
+                st.success(f"📊 새 프로젝트 ID: {new_project_id}")
+                
+                return new_project_id
+            
+        except Exception as e:
+            st.error(f"프로젝트 가져오기 실패: {str(e)}")
+            import traceback
+            st.error(f"상세 오류:\n{traceback.format_exc()}")
+            return None
 
 
 class SimpleLLMProvider:
@@ -623,13 +805,13 @@ def extract_role_dialogues(text, version_type):
                     dialogue_sequence = [('host', cleaned_text, 0)]
             
             # 디버깅 정보
-            st.write(f"🔍 Host 대사 수: {len(host_texts)}")
-            st.write(f"🔍 Guest 대사 수: {len(guest_texts)}")
+            st.write(f"🎤 Host 대사 수: {len(host_texts)}")
+            st.write(f"🎙 Guest 대사 수: {len(guest_texts)}")
             
             if host_texts:
-                st.write(f"🔍 Host 첫 대사 미리보기: {host_texts[0][:100]}...")
+                st.write(f"🎤 Host 첫 대사 미리보기: {host_texts[0][:100]}...")
             if guest_texts:
-                st.write(f"🔍 Guest 첫 대사 미리보기: {guest_texts[0][:100]}...")
+                st.write(f"🎙 Guest 첫 대사 미리보기: {guest_texts[0][:100]}...")
             
             # 역할별로 분리된 텍스트와 순서 정보 반환
             return {
@@ -696,13 +878,13 @@ def extract_role_dialogues(text, version_type):
                     dialogue_sequence = [('a', cleaned_text, 0)]
             
             # 디버깅 정보
-            st.write(f"🔍 Person A 대사 수: {len(a_texts)}")
-            st.write(f"🔍 Person B 대사 수: {len(b_texts)}")
+            st.write(f"👤 Person A 대사 수: {len(a_texts)}")
+            st.write(f"👥 Person B 대사 수: {len(b_texts)}")
             
             if a_texts:
-                st.write(f"🔍 Person A 첫 대사 미리보기: {a_texts[0][:100]}...")
+                st.write(f"👤 Person A 첫 대사 미리보기: {a_texts[0][:100]}...")
             if b_texts:
-                st.write(f"🔍 Person B 첫 대사 미리보기: {b_texts[0][:100]}...")
+                st.write(f"👥 Person B 첫 대사 미리보기: {b_texts[0][:100]}...")
             
             # 역할별로 분리된 텍스트와 순서 정보 반환
             return {
@@ -851,7 +1033,7 @@ def generate_multi_voice_audio(text, api_key, voice1, voice2, version_type):
                 st.error(f"⛔ {version_type}에서 대화 순서가 비어있습니다.")
                 return None
             
-            st.write(f"📋 총 {len(dialogue_sequence)}개의 대화 감지")
+            st.write(f"📋 이 {len(dialogue_sequence)}개의 대화 감지")
             
             # 대화 순서별로 개별 음성 생성
             sentence_audio_files = []
@@ -888,10 +1070,10 @@ def generate_multi_voice_audio(text, api_key, voice1, voice2, version_type):
                 st.error("⛔ 생성된 문장별 음성이 없습니다.")
                 return None
             
-            st.success(f"🎵 총 {len(sentence_audio_files)}개 문장 음성 생성 완료!")
+            st.success(f"🎵 이 {len(sentence_audio_files)}개 문장 음성 생성 완료!")
             
             # 대화 순서대로 오디오 합치기
-            st.write("📄 대화 순서에 따라 오디오 합치는 중...")
+            st.write("🔄 대화 순서에 따라 오디오 합치는 중...")
             
             # 순서대로 정렬 (이미 순서대로 생성되었지만 확실히 하기 위해)
             sentence_audio_files.sort(key=lambda x: x['index'])
@@ -1074,7 +1256,7 @@ def display_results(results, version):
                 if 'sentences' in audio_data and isinstance(audio_data['sentences'], list):
                     with st.expander("🔍 문장별 음성 세부사항", expanded=False):
                         sentences = audio_data['sentences']
-                        st.write(f"총 {len(sentences)}개 문장으로 구성")
+                        st.write(f"이 {len(sentences)}개 문장으로 구성")
                         
                         for j, sentence_info in enumerate(sentences):
                             role = sentence_info['role'].upper()
@@ -1211,7 +1393,7 @@ def script_creation_page():
     
     # 현재 프로젝트 상태 표시
     if 'current_project_id' in st.session_state:
-        st.info(f"📝 현재 프로젝트: {st.session_state.current_project_id} | 같은 폴더에 모든 버전이 저장됩니다")
+        st.info(f"📁 현재 프로젝트: {st.session_state.current_project_id} | 같은 폴더에 모든 버전이 저장됩니다")
     else:
         st.info("🆕 새 프로젝트 - 첫 번째 저장 시 새 폴더가 생성됩니다")
     
@@ -1275,7 +1457,7 @@ def script_creation_page():
     # 탭 생성
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📄 원본 스크립트", 
-        "🔤 기초 말하기", 
+        "📤 기초 말하기", 
         "🎯 TED", 
         "🎙️ PODCAST", 
         "💬 DIALOG"
@@ -1523,7 +1705,7 @@ def get_version_prompt(version, input_content, category):
         
         Requirements:
         1. Use only the most basic English vocabulary (elementary level)
-        2. Create exactly 5 sentences
+        2. Create exactly 5 to 10 sentences
         3. Use simple present tense mostly
         4. Each sentence should be 5-10 words maximum
         5. Use very common, everyday words that beginners know
@@ -1644,7 +1826,7 @@ def practice_page():
             st.markdown("**스크립트 생성** 탭에서 새로운 스크립트를 만들어보세요! 🚀")
             return
         
-        st.success(f"📚 총 {len(projects)}개의 프로젝트가 저장되어 있습니다.")
+        st.success(f"📚 이 {len(projects)}개의 프로젝트가 저장되어 있습니다.")
         st.markdown("### 📖 연습할 스크립트 선택")
         
         project_options = {}
@@ -1738,7 +1920,7 @@ def practice_page():
                                     if 'sentences' in audio_data and isinstance(audio_data['sentences'], list):
                                         with st.expander("🔍 문장별 세부 연습", expanded=False):
                                             sentences = audio_data['sentences']
-                                            st.write(f"총 {len(sentences)}개 문장으로 구성")
+                                            st.write(f"이 {len(sentences)}개 문장으로 구성")
                                             
                                             for j, sentence_info in enumerate(sentences):
                                                 if isinstance(sentence_info, dict):
@@ -1854,12 +2036,13 @@ def practice_page():
 
 
 def my_scripts_page():
-    """내 스크립트 페이지 (간소화된 버전)"""
+    """내 스크립트 페이지 (간소화된 버전 + 다운로드/업로드 기능)"""
     st.header("📚 내 스크립트")
     
     storage = st.session_state.storage
     
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # 상단 컨트롤 패널
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     
     with col1:
         search_query = st.text_input("🔍 검색", placeholder="제목 또는 내용 검색...")
@@ -1873,6 +2056,29 @@ def my_scripts_page():
     with col3:
         sort_order = st.selectbox("정렬", ["최신순", "제목순"])
     
+    with col4:
+        # 프로젝트 업로드 기능
+        st.markdown("**📥 프로젝트 가져오기**")
+        uploaded_zip = st.file_uploader(
+            "ZIP 파일 업로드",
+            type=['zip'],
+            help="MyTalk에서 내보낸 프로젝트 ZIP 파일을 업로드하세요",
+            key="project_upload"
+        )
+        
+        if uploaded_zip is not None:
+            if st.button("📁 가져오기 실행", key="import_project"):
+                with st.spinner("프로젝트 가져오는 중..."):
+                    zip_data = uploaded_zip.read()
+                    imported_project_id = storage.import_project_from_zip(zip_data)
+                    
+                    if imported_project_id:
+                        st.balloons()
+                        st.success("프로젝트 가져오기 성공!")
+                        time.sleep(2)
+                        st.rerun()
+    
+    # 프로젝트 목록 로드 및 필터링
     projects = storage.load_all_projects()
     
     if search_query:
@@ -1887,7 +2093,7 @@ def my_scripts_page():
         projects.sort(key=lambda x: x['created_at'], reverse=True)
     
     if projects:
-        st.write(f"총 {len(projects)}개의 프로젝트")
+        st.write(f"이 {len(projects)}개의 프로젝트")
         
         for i in range(0, len(projects), 2):
             cols = st.columns(2)
@@ -1903,7 +2109,14 @@ def my_scripts_page():
                             st.markdown(f"**생성일**: {project['created_at'][:10]}")
                             st.markdown(f"**버전**: {len(project['versions'])}개")
                             
-                            button_cols = st.columns(3)
+                            # 가져온 프로젝트 표시
+                            if 'imported_at' in project:
+                                st.markdown("🔄 *가져온 프로젝트*")
+                                if 'original_project_id' in project:
+                                    st.caption(f"원본 ID: {project['original_project_id']}")
+                            
+                            # 버튼 행
+                            button_cols = st.columns(4)
                             
                             with button_cols[0]:
                                 if st.button("📖 보기", key=f"view_{project['project_id']}"):
@@ -1914,6 +2127,27 @@ def my_scripts_page():
                                     st.info("연습하기 탭으로 이동해서 해당 프로젝트를 선택하세요.")
                             
                             with button_cols[2]:
+                                # 다운로드 기능
+                                if st.button("📤 내보내기", key=f"export_{project['project_id']}"):
+                                    with st.spinner("프로젝트를 ZIP으로 내보내는 중..."):
+                                        zip_data = storage.export_project_to_zip(project['project_id'])
+                                        
+                                        if zip_data:
+                                            # 안전한 파일명 생성
+                                            safe_title = storage.sanitize_filename(project['title'])
+                                            filename = f"{project['project_id']}_{safe_title}.zip"
+                                            
+                                            st.download_button(
+                                                label="💾 ZIP 다운로드",
+                                                data=zip_data,
+                                                file_name=filename,
+                                                mime="application/zip",
+                                                key=f"download_{project['project_id']}",
+                                                help="프로젝트의 모든 파일을 ZIP으로 다운로드합니다"
+                                            )
+                                            st.success("내보내기 준비 완료!")
+                            
+                            with button_cols[3]:
                                 if st.button("🗑️ 삭제", key=f"delete_{project['project_id']}"):
                                     if st.session_state.get(f"confirm_delete_{project['project_id']}"):
                                         if storage.delete_project(project['project_id']):
@@ -1923,6 +2157,7 @@ def my_scripts_page():
                                         st.session_state[f"confirm_delete_{project['project_id']}"] = True
                                         st.warning("한 번 더 클릭하면 삭제됩니다.")
                             
+                            # 프로젝트 상세보기
                             if st.session_state.get(f"show_detail_{project['project_id']}"):
                                 with st.expander(f"📋 {project['title']} 상세보기", expanded=True):
                                     project_content = storage.load_project_content(project['project_id'])
@@ -1969,6 +2204,31 @@ def my_scripts_page():
     else:
         st.info("저장된 프로젝트가 없습니다.")
         st.markdown("**스크립트 생성** 탭에서 새로운 프로젝트를 만들어보세요! 🚀")
+    
+    # 하단 도움말
+    with st.expander("💡 다운로드/업로드 사용법", expanded=False):
+        st.markdown("""
+        ### 📤 프로젝트 내보내기 (다운로드)
+        1. 원하는 프로젝트의 **📤 내보내기** 버튼 클릭
+        2. 시스템이 모든 파일을 ZIP으로 패키징
+        3. **💾 ZIP 다운로드** 버튼으로 파일 저장
+        
+        **포함되는 파일들:**
+        - 모든 스크립트 파일 (.txt)
+        - 모든 오디오 파일 (.mp3)
+        - 프로젝트 메타데이터 (metadata.json)
+        
+        ### 📥 프로젝트 가져오기 (업로드)
+        1. 상단의 **ZIP 파일 업로드**에서 파일 선택
+        2. **📁 가져오기 실행** 버튼 클릭
+        3. 시스템이 자동으로 새 프로젝트 ID 생성
+        4. 중복 방지를 위해 기존 프로젝트와 별개로 생성
+        
+        **주의사항:**
+        - MyTalk에서 내보낸 ZIP 파일만 호환됩니다
+        - 가져온 프로젝트는 새로운 ID로 생성됩니다
+        - 원본 프로젝트 정보는 메타데이터에 보관됩니다
+        """)
 
 
 def settings_page():
@@ -2147,7 +2407,7 @@ def settings_page():
             st.warning("⚠️ pydub 없음")
         
         if not FFMPEG_AVAILABLE and not PYDUB_AVAILABLE:
-            st.error("❌ 오디오 합치기 라이브러리가 없습니다. imageio_ffmpeg 또는 pydub를 설치하세요.")
+            st.error("⌛ 오디오 합치기 라이브러리가 없습니다. imageio_ffmpeg 또는 pydub를 설치하세요.")
         
         # 모바일 사용 안내
         st.markdown("**📱 모바일 사용자 안내**")
