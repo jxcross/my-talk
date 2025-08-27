@@ -543,84 +543,60 @@ class SimpleStorage:
                 # 원본 프로젝트 폴더 찾기 (metadata.json이 있는 폴더)
                 source_project_folder = metadata_file.parent
                 
-                # 디렉토리 구조 그대로 복사
-                new_saved_files = {}
-                
                 # 전체 폴더 구조를 새 위치에 복사
                 for item in source_project_folder.iterdir():
                     if item.name != 'metadata.json':  # metadata.json은 별도 처리
+                        dest_item = new_project_folder / item.name
+                        
                         if item.is_file():
                             # 루트 레벨 파일들
-                            dest_file = new_project_folder / item.name
-                            shutil.copy2(item, dest_file)
+                            shutil.copy2(item, dest_item)
                             st.write(f"✅ {item.name} 복사됨")
-                            
-                            # saved_files 경로 업데이트
-                            for file_type, file_info in metadata.get('saved_files', {}).items():
-                                if isinstance(file_info, str) and Path(file_info).name == item.name:
-                                    new_saved_files[file_type] = str(dest_file)
                                     
                         elif item.is_dir():
                             # 디렉토리 전체 복사 (예: audio 폴더)
-                            dest_dir = new_project_folder / item.name
-                            shutil.copytree(item, dest_dir)
+                            shutil.copytree(item, dest_item)
                             st.write(f"✅ 폴더 {item.name}/ 복사됨")
-                            
-                            # saved_files의 경로들을 새 경로로 업데이트
-                            for file_type, file_info in metadata.get('saved_files', {}).items():
-                                if isinstance(file_info, str):
-                                    # 단일 파일 경로 업데이트
-                                    old_path = Path(file_info)
-                                    if str(item) in str(old_path):
-                                        relative_path = old_path.relative_to(source_project_folder)
-                                        new_path = new_project_folder / relative_path
-                                        if new_path.exists():
-                                            new_saved_files[file_type] = str(new_path)
-                                
-                                elif isinstance(file_info, dict):
-                                    # 다중 파일 구조 처리
-                                    new_file_dict = {}
-                                    for sub_key, sub_info in file_info.items():
-                                        if isinstance(sub_info, str):
-                                            # 개별 파일 경로 업데이트
-                                            old_path = Path(sub_info)
-                                            if str(item) in str(old_path):
-                                                relative_path = old_path.relative_to(source_project_folder)
-                                                new_path = new_project_folder / relative_path
-                                                if new_path.exists():
-                                                    new_file_dict[sub_key] = str(new_path)
-                                        
-                                        elif isinstance(sub_info, list):
-                                            # 문장별 오디오 파일들
-                                            new_sentences = []
-                                            for sentence_info in sub_info:
-                                                if isinstance(sentence_info, dict) and 'audio_file' in sentence_info:
-                                                    old_audio_path = Path(sentence_info['audio_file'])
-                                                    if str(item) in str(old_audio_path):
-                                                        relative_path = old_audio_path.relative_to(source_project_folder)
-                                                        new_audio_path = new_project_folder / relative_path
-                                                        if new_audio_path.exists():
-                                                            new_sentence_info = sentence_info.copy()
-                                                            new_sentence_info['audio_file'] = str(new_audio_path)
-                                                            new_sentences.append(new_sentence_info)
-                                            
-                                            if new_sentences:
-                                                new_file_dict[sub_key] = new_sentences
-                                    
-                                    if new_file_dict:
-                                        new_saved_files[file_type] = new_file_dict
                 
-                # 처리되지 않은 saved_files 항목들 복사 (경로 업데이트)
+                # saved_files 경로를 새 경로로 업데이트
+                new_saved_files = {}
+                
+                def update_path_in_saved_files(file_info, base_old_path, base_new_path):
+                    """saved_files의 경로를 재귀적으로 업데이트하는 도우미 함수"""
+                    if isinstance(file_info, str):
+                        # 파일명 기반으로 새 경로 찾기
+                        old_filename = os.path.basename(file_info)
+                        
+                        # 새 프로젝트 폴더에서 같은 이름의 파일 찾기
+                        for new_root, new_dirs, new_files in os.walk(base_new_path):
+                            if old_filename in new_files:
+                                return str(Path(new_root) / old_filename)
+                        
+                        # 찾지 못한 경우 원래 경로 구조 유지 시도
+                        return file_info
+                    
+                    elif isinstance(file_info, dict):
+                        updated_dict = {}
+                        for key, value in file_info.items():
+                            updated_dict[key] = update_path_in_saved_files(value, base_old_path, base_new_path)
+                        return updated_dict
+                    
+                    elif isinstance(file_info, list):
+                        updated_list = []
+                        for item in file_info:
+                            updated_list.append(update_path_in_saved_files(item, base_old_path, base_new_path))
+                        return updated_list
+                    
+                    else:
+                        return file_info
+                
+                # 모든 saved_files 항목의 경로 업데이트
                 for file_type, file_info in metadata.get('saved_files', {}).items():
-                    if file_type not in new_saved_files:
-                        if isinstance(file_info, str):
-                            old_path = Path(file_info)
-                            relative_path = old_path.relative_to(source_project_folder)
-                            new_path = new_project_folder / relative_path
-                            if new_path.exists():
-                                new_saved_files[file_type] = str(new_path)
-                        elif isinstance(file_info, dict):
-                            new_saved_files[file_type] = file_info  # 일단 그대로 복사
+                    new_saved_files[file_type] = update_path_in_saved_files(
+                        file_info, 
+                        source_project_folder, 
+                        new_project_folder
+                    )
                 
                 # 메타데이터 업데이트
                 metadata['project_id'] = new_project_id
@@ -1736,7 +1712,7 @@ def get_version_prompt(version, input_content, category):
         
         Requirements:
         1. Use only the most basic English vocabulary (elementary level)
-        2. Create exactly 5 sentences
+        2. Create exactly 5-10 sentences
         3. Use simple present tense mostly
         4. Each sentence should be 5-10 words maximum
         5. Use very common, everyday words that beginners know
